@@ -1,0 +1,88 @@
+import discord
+from discord.ext import commands, tasks
+import random
+import asyncio
+import os
+
+TOKEN = 'TU_TOKEN_DE_DISCORD'
+CHANNEL_ID = 123456789012345678  # Reemplaza con el ID de tu canal
+VIDEO_INDEX_FILE = 'video_index.txt'
+
+# Lista de videos de YouTube
+videos = [
+    "https://www.youtube.com/watch?v=Video1",
+    "https://www.youtube.com/watch?v=Video2",
+    # Añade más enlaces aquí, hasta llegar a 50
+]
+
+intents = discord.Intents.default()
+intents.messages = True
+intents.guilds = True
+
+bot = commands.Bot(command_prefix='!', intents=intents)
+
+# Función para leer el índice del video desde el archivo
+def read_video_index():
+    if not os.path.exists(VIDEO_INDEX_FILE):
+        with open(VIDEO_INDEX_FILE, 'w') as f:
+            f.write('0')
+    with open(VIDEO_INDEX_FILE, 'r') as f:
+        return int(f.read().strip())
+
+# Función para guardar el índice del video en el archivo
+def save_video_index(index):
+    with open(VIDEO_INDEX_FILE, 'w') as f:
+        f.write(str(index))
+
+# Tarea que se ejecuta cada 24 horas
+@tasks.loop(hours=24)
+async def send_video():
+    channel = bot.get_channel(CHANNEL_ID)
+    if channel:
+        video_index = read_video_index()
+        video_link = videos[video_index]
+
+        try:
+            await channel.send(video_link)
+            video_index = (video_index + 1) % len(videos)
+            save_video_index(video_index)
+        except discord.DiscordException as e:
+            print(f"Error al enviar el video: {e}")
+
+@send_video.before_loop
+async def before_send_video():
+    await bot.wait_until_ready()
+
+@bot.event
+async def on_ready():
+    print(f'Bot conectado como {bot.user}')
+    if not send_video.is_running():
+        send_video.start()
+
+@bot.command(name='pause')
+async def pause_send_video(ctx):
+    send_video.cancel()
+    await ctx.send("Envio de videos pausado.")
+
+@bot.command(name='resume')
+async def resume_send_video(ctx):
+    if not send_video.is_running():
+        send_video.start()
+    await ctx.send("Envio de videos reanudado.")
+
+@bot.command(name='reset')
+async def reset_video_index(ctx):
+    save_video_index(0)
+    await ctx.send("Indice de video reiniciado a 0.")
+
+# Comando para enviar un video aleatorio en cualquier momento
+@bot.command(name='sendrandom')
+async def send_random_video(ctx):
+    channel = bot.get_channel(CHANNEL_ID)
+    video_link = random.choice(videos)
+    try:
+        await channel.send(video_link)
+    except discord.DiscordException as e:
+        print(f"Error al enviar el video: {e}")
+
+bot.run(TOKEN)
